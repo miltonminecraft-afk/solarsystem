@@ -261,7 +261,7 @@ Charon:{minOrbit:12,maxOrbit:22},
 default:{minOrbit:14,maxOrbit:26}
 }
 
-const state={panX:0,panY:0,targetPanX:0,targetPanY:0,zoom:1.05,targetZoom:1.05,isDragging:false,lastPointerX:0,lastPointerY:0,mouseX:innerWidth/2,mouseY:innerHeight/2,simulationDaysPerSecond:SPEED_STEPS[0],isPaused:false,baseJulianDate:getJulianDate(new Date()),simulatedDays:0,sliderAnchorDate:new Date(),lastTime:performance.now(),AU_SCALE:18,hoveredBody:null,hoverDirty:true,stars:[],backgroundLoaded:false,backgroundFailed:false}
+const state={panX:0,panY:0,targetPanX:0,targetPanY:0,zoom:1.05,targetZoom:1.05,isDragging:false,lastPointerX:0,lastPointerY:0,mouseX:innerWidth/2,mouseY:innerHeight/2,simulationDaysPerSecond:SPEED_STEPS[0],isPaused:false,baseJulianDate:getJulianDate(new Date()),simulatedDays:0,sliderAnchorDate:new Date(),lastTime:performance.now(),AU_SCALE:18,hoveredBody:null,hoverDirty:true,stars:[],backgroundLoaded:false,backgroundFailed:false,pinchActive:false,pinchStartDistance:0,pinchStartZoom:1.05,pinchWorldX:0,pinchWorldY:0}
 
 const backgroundImage=new Image()
 backgroundImage.crossOrigin='anonymous'
@@ -849,19 +849,54 @@ state.lastPointerY=e.clientY
 })
 
 canvas.addEventListener('touchstart',e=>{
+e.preventDefault()
+if(e.touches.length>=2){
+const a=e.touches[0],b=e.touches[1]
+const mx=(a.clientX+b.clientX)/2
+const my=(a.clientY+b.clientY)/2
+state.pinchActive=true
+state.isDragging=false
+state.pinchStartDistance=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY)
+state.pinchStartZoom=state.targetZoom
+state.pinchWorldX=(mx-state.targetPanX-innerWidth/2)/state.targetZoom
+state.pinchWorldY=(my-state.targetPanY-innerHeight/2)/state.targetZoom
+state.mouseX=mx
+state.mouseY=my
+state.hoveredBody=null
+hoverCard.style.display='none'
+return
+}
 const t=e.touches[0]
 if(!t)return
+state.pinchActive=false
 state.isDragging=true
 state.lastPointerX=t.clientX
 state.lastPointerY=t.clientY
-},{passive:true})
+state.mouseX=t.clientX
+state.mouseY=t.clientY
+},{passive:false})
 
 window.addEventListener('mouseup',()=>{
 state.isDragging=false
 state.hoverDirty=true
 })
 
-window.addEventListener('touchend',()=>{
+window.addEventListener('touchend',e=>{
+if(e.touches.length>=2)return
+state.pinchActive=false
+if(e.touches.length===1){
+const t=e.touches[0]
+state.isDragging=true
+state.lastPointerX=t.clientX
+state.lastPointerY=t.clientY
+}else{
+state.isDragging=false
+state.hoverDirty=true
+}
+},{passive:true})
+
+window.addEventListener('touchcancel',()=>{
+state.pinchActive=false
 state.isDragging=false
 state.hoverDirty=true
 },{passive:true})
@@ -880,19 +915,49 @@ state.lastPointerY=e.clientY
 })
 
 window.addEventListener('touchmove',e=>{
+e.preventDefault()
+if(e.touches.length>=2){
+const a=e.touches[0],b=e.touches[1]
+const mx=(a.clientX+b.clientX)/2
+const my=(a.clientY+b.clientY)/2
+const distance=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY)
+if(!state.pinchActive){
+state.pinchActive=true
+state.pinchStartDistance=distance
+state.pinchStartZoom=state.targetZoom
+state.pinchWorldX=(mx-state.targetPanX-innerWidth/2)/state.targetZoom
+state.pinchWorldY=(my-state.targetPanY-innerHeight/2)/state.targetZoom
+}
+const ratio=state.pinchStartDistance>0?distance/state.pinchStartDistance:1
+const nz=Math.max(.3,Math.min(120,state.pinchStartZoom*ratio))
+state.targetZoom=nz
+state.targetPanX=mx-(state.pinchWorldX*nz+innerWidth/2)
+state.targetPanY=my-(state.pinchWorldY*nz+innerHeight/2)
+state.mouseX=mx
+state.mouseY=my
+zoomRange.value=nz.toFixed(2)
+state.hoveredBody=null
+hoverCard.style.display='none'
+return
+}
 const t=e.touches[0]
 if(!t)return
 state.mouseX=t.clientX
 state.mouseY=t.clientY
 state.hoverDirty=true
-if(!state.isDragging)return
+if(!state.isDragging){
+state.isDragging=true
+state.lastPointerX=t.clientX
+state.lastPointerY=t.clientY
+return
+}
 const dx=t.clientX-state.lastPointerX
 const dy=t.clientY-state.lastPointerY
 state.targetPanX+=dx
 state.targetPanY+=dy
 state.lastPointerX=t.clientX
 state.lastPointerY=t.clientY
-},{passive:true})
+},{passive:false})
 
 canvas.addEventListener('wheel',e=>{
 e.preventDefault()
